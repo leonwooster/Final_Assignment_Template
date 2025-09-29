@@ -1,15 +1,13 @@
-import json
 import os
-import re
-from pathlib import Path
-from typing import Protocol
 
 import gradio as gr
-import requests
 import pandas as pd
-from bs4 import BeautifulSoup
+import requests
 
 from dotenv import load_dotenv
+
+from agent import BasicAgent, agent_graph_mermaid
+from agent.graph import agent_graph_png_base64
 
 load_dotenv()
 
@@ -19,274 +17,39 @@ def _env_flag(name: str, default: bool = False) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
-
-
-# (Keep Constants as is)
-# --- Constants ---
 DEFAULT_API_URL = "https://agents-course-unit4-scoring.hf.space"
 _SPACE_ENV_CONFIGURED = bool(os.getenv("SPACE_ID") or os.getenv("SPACE_HOST"))
 FORCE_LOCAL_MODE = _env_flag("FORCE_LOCAL_MODE") or _env_flag("DISABLE_HF_LOGIN") or _env_flag("GRADIO_FORCE_LOCAL")
 RUNNING_IN_SPACE = _SPACE_ENV_CONFIGURED and not FORCE_LOCAL_MODE
-CACHE_DIR = Path(__file__).resolve().parent / "cache"
-CACHE_DIR.mkdir(exist_ok=True)
 
 
-class QuestionHandler(Protocol):
-    """Minimal protocol each question handler must follow."""
+try:
+    GRAPH_MERMAID = agent_graph_mermaid()
+except Exception as exc:  # noqa: BLE001
+    GRAPH_MERMAID = f"Error generating graph diagram: {exc}"
 
-    def matches(self, question: str) -> bool:  # pragma: no cover - interface definition
-        ...
-
-    def answer(self, question: str) -> str:  # pragma: no cover - interface definition
-        ...
+GRAPH_PNG_BASE64 = agent_graph_png_base64()
 
 
-class RegexQuestionHandler:
-    """Reusable helper for regex-based handler matching."""
-
-    pattern: re.Pattern[str]
-
-    def matches(self, question: str) -> bool:
-        return bool(self.pattern.search(question))
-
-
-class ReverseSentenceHandler(RegexQuestionHandler):
-    pattern = re.compile(r"\\.rewsna", re.IGNORECASE)
-
-    def answer(self, question: str) -> str:
-        # The reversed instructions ask for the opposite of "left".
-        return "right"
-
-
-class VegetableListHandler(RegexQuestionHandler):
-    pattern = re.compile(r"list of just the vegetables", re.IGNORECASE)
-
-    _VEGETABLE_MAP = {
-        "broccoli": "broccoli",
-        "celery": "celery",
-        "lettuce": "lettuce",
-        "sweet potatoes": "sweet potatoes",
-        "fresh basil": "fresh basil",
-    }
-    _ALIASES = {
-        "basil": "fresh basil",
-    }
-
-    def answer(self, question: str) -> str:
-        match = re.search(r"here's the list I have so far:(.*?)(?:i need|$)", question, re.IGNORECASE | re.DOTALL)
-        if not match:
-            raise ValueError("Unable to locate the grocery list in the question.")
-        items_text = match.group(1)
-        raw_items = [token.strip() for token in items_text.split(",") if token.strip()]
-        veggies = set()
-        for raw in raw_items:
-            normalized = raw.lower()
-            normalized = self._ALIASES.get(normalized, normalized)
-            if normalized in self._VEGETABLE_MAP:
-                veggies.add(self._VEGETABLE_MAP[normalized])
-        veggies_list = sorted(veggies)
-        if not veggies:
-            raise ValueError("No vegetables identified in the provided list.")
-        return ", ".join(veggies_list)
-
-
-class NonCommutativeOperationHandler(RegexQuestionHandler):
-    pattern = re.compile(r"table defining \* on the set S = {a, b, c, d, e}", re.IGNORECASE)
-
-    _TABLE = {
-        "a": {"a": "a", "b": "b", "c": "c", "d": "b", "e": "d"},
-        "b": {"a": "b", "b": "c", "c": "a", "d": "e", "e": "c"},
-        "c": {"a": "c", "b": "a", "c": "b", "d": "b", "e": "a"},
-        "d": {"a": "b", "b": "e", "c": "b", "d": "e", "e": "d"},
-        "e": {"a": "d", "b": "b", "c": "a", "d": "d", "e": "c"},
-    }
-    _ELEMENTS = tuple(_TABLE.keys())
-
-    def answer(self, question: str) -> str:
-        witnesses = set()
-        for x in self._ELEMENTS:
-            for y in self._ELEMENTS:
-                if x != y and self._TABLE[x][y] != self._TABLE[y][x]:
-                    witnesses.add(x)
-                    witnesses.add(y)
-        if not witnesses:
-            raise ValueError("Operation appears commutative; no witnesses found.")
-        return ", ".join(sorted(witnesses))
-
-
-class MercedesSosaAlbumHandler(RegexQuestionHandler):
-    pattern = re.compile(r"Mercedes Sosa.*studio albums", re.IGNORECASE | re.DOTALL)
-
-    _URL = "https://en.wikipedia.org/wiki/Mercedes_Sosa"
-    _CACHE_FILE = CACHE_DIR / "mercedes_sosa_album_count.json"
-    _YEAR_RANGE = (2000, 2009)
-
-    def answer(self, question: str) -> str:
-        start_year, end_year = self._YEAR_RANGE
-        count = self._get_album_count(start_year, end_year)
-        return str(count)
-
-    def _get_album_count(self, start_year: int, end_year: int) -> int:
-        cached = self._read_cache()
-        if cached is not None:
-            return cached
-
-        tables = pd.read_html(self._URL, match="Studio")
-        best_count: int | None = None
-        for table in tables:
-            columns_lower = [str(col).strip().lower() for col in table.columns]
-            if "year" not in columns_lower:
-                continue
-            year_column = table.columns[columns_lower.index("year")]
-            years = table[year_column].apply(self._extract_year)
-            if years.notnull().sum() == 0:
-                continue
-            count = sum(start_year <= year <= end_year for year in years.dropna())
-            best_count = max(best_count or 0, int(count))
-
-        if best_count is None:
-            raise ValueError("Unable to parse Mercedes Sosa studio album data.")
-
-        self._CACHE_FILE.write_text(str(best_count))
-        return best_count
-
-    def _read_cache(self) -> int | None:
-        if not self._CACHE_FILE.exists():
-            return None
-        cached_text = self._CACHE_FILE.read_text().strip()
-        if cached_text.isdigit():
-            return int(cached_text)
-        return None
-
-    @staticmethod
-    def _extract_year(value: object) -> int | None:
-        match = re.search(r"(19|20)\d{2}", str(value))
-        if not match:
-            return None
-        return int(match.group())
-
-
-class MalkoCompetitionHandler(RegexQuestionHandler):
-    pattern = re.compile(r"Malko Competition.*country that no longer exists", re.IGNORECASE | re.DOTALL)
-
-    _URL = "https://malkocompetition.dk/winners/all"
-    _CACHE_FILE = CACHE_DIR / "malko_winners.json"
-    _YEAR_RANGE = (1978, 2000)
-    _FALLBACK_WINNERS = [
-        {"year": "1980", "winner": "Claus Peter Flor", "country": "West Germany"},
-        {"year": "1983", "winner": "Gotthard Lienicke", "country": "East Germany"},
-        {"year": "1989", "winner": "Maximiano Valdes", "country": "Brazil"},
-    ]
-
-    def answer(self, question: str) -> str:
-        winners = self._load_winners()
-        target = self._find_target_winner(winners)
-        if not target:
-            raise ValueError("Could not identify the requested Malko Competition winner.")
-        return target["first_name"]
-
-    def _load_winners(self) -> list[dict[str, str]]:
-        if self._CACHE_FILE.exists():
-            try:
-                return json.loads(self._CACHE_FILE.read_text())
-            except Exception:
-                pass
-
-        winners = self._scrape_live_winners()
-        if winners:
-            self._CACHE_FILE.write_text(json.dumps(winners))
-            return winners
-
-        return self._FALLBACK_WINNERS
-
-    def _scrape_live_winners(self) -> list[dict[str, str]]:
-        try:
-            response = requests.get(self._URL, timeout=20)
-            response.raise_for_status()
-        except Exception as exc:
-            print(f"Warning: Failed to fetch Malko winners page: {exc}")
-            return []
-
-        soup = BeautifulSoup(response.text, "html.parser")
-        winners: list[dict[str, str]] = []
-        for table in soup.find_all("table"):
-            headers = [th.get_text(strip=True).lower() for th in table.find_all("th")]
-            if "year" not in headers:
-                continue
-            rows = table.find_all("tr")
-            for row in rows[1:]:
-                cells = [cell.get_text(" ", strip=True) for cell in row.find_all(["td", "th"])]
-                if not cells:
-                    continue
-                row_data: dict[str, str] = {}
-                for header, cell in zip(headers, cells):
-                    row_data[header] = cell
-                winners.append(row_data)
-
-        return winners
-
-    def _find_target_winner(self, winners: list[dict[str, str]]) -> dict[str, str] | None:
-        start_year, end_year = self._YEAR_RANGE
-        for winner in winners:
-            year_value = winner.get("year") or winner.get("years") or ""
-            country_value = winner.get("country") or winner.get("nationality") or winner.get("nationality/orchestra") or ""
-            if not year_value or not country_value:
-                continue
-            year_match = re.search(r"(19|20)\d{2}", year_value)
-            if not year_match:
-                continue
-            year = int(year_match.group())
-            if year < start_year or year > end_year:
-                continue
-            if not self._is_country_defunct(country_value):
-                continue
-            full_name = winner.get("winner") or winner.get("name") or winner.get("conductor") or ""
-            full_name = full_name.strip()
-            if not full_name:
-                continue
-            first_name = full_name.split()[0]
-            return {"first_name": first_name, "full_name": full_name, "country": country_value}
-        return None
-
-    @staticmethod
-    def _is_country_defunct(country: str) -> bool:
-        defunct_countries = {
-            "ussr",
-            "soviet union",
-            "yugoslavia",
-            "czechoslovakia",
-            "east germany",
-            "west germany",
-            "serbia and montenegro",
-            "burma",
-            "zaire",
-        }
-        normalized = country.lower()
-        return any(name in normalized for name in defunct_countries)
-
-
-# --- Basic Agent Definition ---
-# ----- THIS IS WERE YOU CAN BUILD WHAT YOU WANT ------
-class BasicAgent:
-    def __init__(self):
-        print("BasicAgent initialized.")
-        self.handlers: list[QuestionHandler] = [
-            ReverseSentenceHandler(),
-            VegetableListHandler(),
-            NonCommutativeOperationHandler(),
-            MercedesSosaAlbumHandler(),
-            MalkoCompetitionHandler(),
-        ]
-
-    def __call__(self, question: str) -> str:
-        print(f"Agent received question (first 50 chars): {question[:50]}...")
-        for handler in self.handlers:
-            if handler.matches(question):
-                answer = handler.answer(question)
-                print(f"Handler {handler.__class__.__name__} produced: {answer}")
-                return answer
-        print("No handler matched question. Returning fallback message.")
-        return "UNHANDLED"
+def mermaid_html(diagram: str) -> str:
+    if not diagram.startswith("graph"):
+        if diagram.startswith("---"):
+            parts = diagram.split("---", 2)
+            if len(parts) == 3:
+                diagram = parts[2].strip()
+        else:
+            return f"<pre>{diagram}</pre>"
+    if diagram.startswith("---"):
+        sections = diagram.split("---", 2)
+        if len(sections) == 3:
+            diagram = sections[2].strip()
+    return (
+        "<div class=\"mermaid\">\n"
+        f"{diagram}\n"
+        "</div>\n"
+        "<script src=\"https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js\"></script>\n"
+        "<script>mermaid.initialize({startOnLoad: true});</script>"
+    )
 
 
 def run_and_submit_all(profile: gr.OAuthProfile | None = None, username: str | None = None):
@@ -449,6 +212,14 @@ with gr.Blocks() as demo:
         This space provides a basic setup and is intentionally sub-optimal to encourage you to develop your own, more robust solution. For instance for the delay process of the submit button, a solution could be to cache the answers and submit in a seperate action or even to answer the questions in async.
         """
     )
+
+    gr.Markdown("## Agent Flow Graph")
+    if GRAPH_PNG_BASE64:
+        gr.HTML(
+            f"<img src='data:image/png;base64,{GRAPH_PNG_BASE64}' alt='Agent Flow Graph' style='max-width:100%;height:auto;'/>"
+        )
+    else:
+        gr.HTML(mermaid_html(GRAPH_MERMAID))
 
     login_button = None
     username_box = None
