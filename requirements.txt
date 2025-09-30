@@ -19,3 +19,4 @@ openpyxl
 langchain-tavily
 wikipedia
 youtube-transcript-api
+google-generativeai

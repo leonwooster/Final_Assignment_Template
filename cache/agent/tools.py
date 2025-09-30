@@ -188,50 +188,6 @@ class DownloadFileTool(BaseTool):
         return self._run(url)
 
 
-class ExecutePythonFileTool(BaseTool):
-    """Tool for executing Python files and capturing output."""
-    
-    name: str = "execute_python_file"
-    description: str = "Executes a Python file and returns its output. Input should be the file path to the .py file. Captures stdout and returns the final output."
-    
-    def _run(self, file_path: str) -> str:
-        """Execute Python file and return output."""
-        try:
-            import subprocess
-            import sys
-            
-            # Find file in multiple locations
-            actual_path = find_file(file_path)
-            if not os.path.exists(actual_path):
-                return f"Error: Python file '{file_path}' not found in current directory or downloads/."
-            
-            # Execute the Python file
-            result = subprocess.run(
-                [sys.executable, actual_path],
-                capture_output=True,
-                text=True,
-                timeout=30  # 30 second timeout
-            )
-            
-            output = ""
-            if result.stdout:
-                output += f"Output:\n{result.stdout}\n"
-            if result.stderr:
-                output += f"Errors:\n{result.stderr}\n"
-            if result.returncode != 0:
-                output += f"Exit code: {result.returncode}\n"
-            
-            return output if output else "Script executed successfully with no output."
-        except subprocess.TimeoutExpired:
-            return "Error: Script execution timed out (30 seconds limit)."
-        except Exception as e:
-            return f"Error executing Python file: {str(e)}"
-    
-    async def _arun(self, file_path: str) -> str:
-        """Async version."""
-        return self._run(file_path)
-
-
 class YouTubeTranscriptTool(BaseTool):
     """Tool for getting transcripts from YouTube videos."""
     
@@ -279,6 +235,30 @@ class YouTubeTranscriptTool(BaseTool):
     async def _arun(self, video_input: str) -> str:
         """Async version."""
         return self._run(video_input)
+
+
+class CalculatorTool(BaseTool):
+    """Tool for performing mathematical calculations safely."""
+    
+    name: str = "calculator"
+    description: str = "Useful for mathematical calculations. Input should be a mathematical expression as a string (e.g., '2 + 2', '(5 * 3) / 2')."
+    
+    def _run(self, expression: str) -> str:
+        """Evaluate a mathematical expression safely."""
+        try:
+            # Remove any potentially dangerous operations
+            if any(dangerous in expression.lower() for dangerous in ['import', 'exec', 'eval', '__']):
+                return "Error: Expression contains forbidden operations."
+            
+            # Evaluate using Python's eval with restricted namespace
+            result = eval(expression, {"__builtins__": {}}, {})
+            return str(result)
+        except Exception as e:
+            return f"Error calculating: {str(e)}"
+    
+    async def _arun(self, expression: str) -> str:
+        """Async version."""
+        return self._run(expression)
 
 
 class GeminiVideoTool(BaseTool):
@@ -427,28 +407,48 @@ class ImageAnalysisTool(BaseTool):
         return self._run(file_path)
 
 
-class CalculatorTool(BaseTool):
-    """Tool for performing mathematical calculations safely."""
+class ExecutePythonFileTool(BaseTool):
+    """Tool for executing Python files and capturing output."""
     
-    name: str = "calculator"
-    description: str = "Useful for mathematical calculations. Input should be a mathematical expression as a string (e.g., '2 + 2', '(5 * 3) / 2')."
+    name: str = "execute_python_file"
+    description: str = "Executes a Python file and returns its output. Input should be the file path to the .py file. Captures stdout and returns the final output."
     
-    def _run(self, expression: str) -> str:
-        """Evaluate a mathematical expression safely."""
+    def _run(self, file_path: str) -> str:
+        """Execute Python file and return output."""
         try:
-            # Remove any potentially dangerous operations
-            if any(dangerous in expression.lower() for dangerous in ['import', 'exec', 'eval', '__']):
-                return "Error: Expression contains forbidden operations."
+            import subprocess
+            import sys
             
-            # Evaluate using Python's eval with restricted namespace
-            result = eval(expression, {"__builtins__": {}}, {})
-            return str(result)
+            # Find file in multiple locations
+            actual_path = find_file(file_path)
+            if not os.path.exists(actual_path):
+                return f"Error: Python file '{file_path}' not found in current directory or downloads/."
+            
+            # Execute the Python file
+            result = subprocess.run(
+                [sys.executable, actual_path],
+                capture_output=True,
+                text=True,
+                timeout=30  # 30 second timeout
+            )
+            
+            output = ""
+            if result.stdout:
+                output += f"Output:\n{result.stdout}\n"
+            if result.stderr:
+                output += f"Errors:\n{result.stderr}\n"
+            if result.returncode != 0:
+                output += f"Exit code: {result.returncode}\n"
+            
+            return output if output else "Script executed successfully with no output."
+        except subprocess.TimeoutExpired:
+            return "Error: Script execution timed out (30 seconds limit)."
         except Exception as e:
-            return f"Error calculating: {str(e)}"
+            return f"Error executing Python file: {str(e)}"
     
-    async def _arun(self, expression: str) -> str:
+    async def _arun(self, file_path: str) -> str:
         """Async version."""
-        return self._run(expression)
+        return self._run(file_path)
 
 
 # Create Wikipedia tool wrapper
@@ -473,4 +473,4 @@ tool_classes = [
     ImageAnalysisTool,  # Gemini image analysis (chess, diagrams, etc.)
     CalculatorTool,
     create_wikipedia_tool  # This returns an instance, not a class
-]
+]   

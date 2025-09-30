@@ -101,7 +101,8 @@ def _initialize_chains_and_tools():
     # Initialize PRIMARY LLM (gpt-4o)
     print("🔧 Initializing primary LLM: gpt-4o")
     _primary_llm = ChatOpenAI(
-        model="gpt-4o",
+        #model="gpt-4o",
+        model="gpt-4.1",
         temperature=0,
         verbose=True,
         request_timeout=60  # 60 second timeout
@@ -151,7 +152,6 @@ FILE HANDLING - CRITICAL:
 - Files are pre-downloaded before you start, so they WILL be in current directory
 - **NEVER** ask for URLs for "attached" files - they're already there!
 - Workflow:
-- Workflow:
   1. Use `list_files` to see what's available
   2. Find the relevant file (Excel, image, mp3, etc.)
   3. Process it with appropriate tool:
@@ -161,7 +161,7 @@ FILE HANDLING - CRITICAL:
      - Text files: use `read_file` tool
      - Images (.png, .jpg): use `analyze_image` tool (Gemini vision) - great for chess, diagrams, text in images
      - MP3/Audio files: use `understand_audio` tool (Gemini audio) - transcribes and understands audio
-     
+
 MULTIMEDIA HANDLING:
 - For YouTube videos: use `understand_video` tool with format: 'URL: <youtube_url> | QUESTION: <specific_question>'
   Example: understand_video('URL: https://www.youtube.com/watch?v=abc | QUESTION: How many bird species are visible?')

@@ -118,19 +118,23 @@ def run_and_submit_all(profile: gr.OAuthProfile | None = None, username: str | N
             try:
                 from pathlib import Path
                 
+                # Create downloads directory if it doesn't exist
+                download_dir = Path("downloads")
+                download_dir.mkdir(exist_ok=True)
+                
                 # Construct file download URL
-                file_url = f"{api_url}/file/{task_id}"
+                file_url = f"{api_url}/files/{task_id}"  # Note: /files/ (plural)
                 print(f"📥 Downloading file: {file_name} from {file_url}")
                 
                 # Download the file
                 file_response = requests.get(file_url, timeout=30)
                 file_response.raise_for_status()
                 
-                # Save file to current directory
-                filepath = Path(file_name)
+                # Save file to downloads directory
+                filepath = download_dir / file_name
                 with open(filepath, 'wb') as f:
                     f.write(file_response.content)
-                print(f"✅ Saved file: {file_name} ({len(file_response.content)} bytes)")
+                print(f"✅ Saved file: {filepath} ({len(file_response.content)} bytes)")
             except Exception as e:
                 print(f"⚠️ Error downloading file {file_name}: {e}")
         

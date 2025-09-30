@@ -1,1 +1,31 @@
 .env
+
+# Exclude arterm folder (reference code)
+arterm/
+
+# Exclude downloads directory
+downloads/
+
+# Exclude log files
+*.log
+agent_run_*.log
+
+# Exclude cache file
+agent_cache.json
+
+# Exclude Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Exclude downloaded files from evaluation
+*.xlsx
+*.mp3
+*.png
+*.jpg
+*.pdf
+downloaded_file.*
+
+# Exclude other temporary files
+rows.json
+OtherDS.py
