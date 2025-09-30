@@ -1,6 +1,6 @@
-"""Agent package exposing LangGraph-based BasicAgent."""
+"""Agent package exposing the BasicAgent and graph utilities."""
 
 from .basic_agent import BasicAgent
-from .graph import build_agent_graph, agent_graph_mermaid
+from .graph import agent_graph_mermaid, build_agent_graph
 
-__all__ = ["BasicAgent", "build_agent_graph", "agent_graph_mermaid"]
+__all__ = ["BasicAgent", "agent_graph_mermaid", "build_agent_graph"]

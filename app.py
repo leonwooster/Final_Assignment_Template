@@ -1,5 +1,8 @@
 import os
 
+# Disable Hugging Face login for local execution
+os.environ["DISABLE_HF_LOGIN"] = "1"
+
 import gradio as gr
 import pandas as pd
 import requests
@@ -11,6 +14,14 @@ from agent.graph import agent_graph_png_base64
 
 load_dotenv()
 
+# Generate the agent graph visualizations
+try:
+    GRAPH_MERMAID = agent_graph_mermaid()
+except Exception as exc:
+    GRAPH_MERMAID = f"Error generating graph diagram: {exc}"
+
+GRAPH_PNG_BASE64 = agent_graph_png_base64()
+
 
 def _env_flag(name: str, default: bool = False) -> bool:
     value = os.getenv(name)
@@ -21,36 +32,6 @@ DEFAULT_API_URL = "https://agents-course-unit4-scoring.hf.space"
 _SPACE_ENV_CONFIGURED = bool(os.getenv("SPACE_ID") or os.getenv("SPACE_HOST"))
 FORCE_LOCAL_MODE = _env_flag("FORCE_LOCAL_MODE") or _env_flag("DISABLE_HF_LOGIN") or _env_flag("GRADIO_FORCE_LOCAL")
 RUNNING_IN_SPACE = _SPACE_ENV_CONFIGURED and not FORCE_LOCAL_MODE
-
-
-try:
-    GRAPH_MERMAID = agent_graph_mermaid()
-except Exception as exc:  # noqa: BLE001
-    GRAPH_MERMAID = f"Error generating graph diagram: {exc}"
-
-GRAPH_PNG_BASE64 = agent_graph_png_base64()
-
-
-def mermaid_html(diagram: str) -> str:
-    if not diagram.startswith("graph"):
-        if diagram.startswith("---"):
-            parts = diagram.split("---", 2)
-            if len(parts) == 3:
-                diagram = parts[2].strip()
-        else:
-            return f"<pre>{diagram}</pre>"
-    if diagram.startswith("---"):
-        sections = diagram.split("---", 2)
-        if len(sections) == 3:
-            diagram = sections[2].strip()
-    return (
-        "<div class=\"mermaid\">\n"
-        f"{diagram}\n"
-        "</div>\n"
-        "<script src=\"https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js\"></script>\n"
-        "<script>mermaid.initialize({startOnLoad: true});</script>"
-    )
-
 
 def run_and_submit_all(profile: gr.OAuthProfile | None = None, username: str | None = None):
     """
@@ -213,13 +194,16 @@ with gr.Blocks() as demo:
         """
     )
 
+    # Display the agent graph
     gr.Markdown("## Agent Flow Graph")
+    gr.Markdown("This diagram shows how your agent processes questions using LangGraph:")
+    
     if GRAPH_PNG_BASE64:
         gr.HTML(
-            f"<img src='data:image/png;base64,{GRAPH_PNG_BASE64}' alt='Agent Flow Graph' style='max-width:100%;height:auto;'/>"
+            f'<img src="data:image/png;base64,{GRAPH_PNG_BASE64}" alt="Agent Flow Graph" style="max-width:100%;height:auto;border:1px solid #ddd;border-radius:4px;padding:10px;"/>'
         )
     else:
-        gr.HTML(mermaid_html(GRAPH_MERMAID))
+        gr.Markdown("*Graph visualization not available. The agent is still functional.*")
 
     login_button = None
     username_box = None
