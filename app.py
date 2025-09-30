@@ -83,6 +83,13 @@ def run_and_submit_all(profile: gr.OAuthProfile | None = None, username: str | N
             print("Fetched questions list is empty.")
             return "Fetched questions list is empty or invalid format.", None
         print(f"Fetched {len(questions_data)} questions.")
+        
+        # Debug: Print first question structure to understand format
+        if questions_data and len(questions_data) > 0:
+            print(f"\n🔍 DEBUG - First question structure:")
+            print(f"Keys: {list(questions_data[0].keys())}")
+            if len(questions_data[0].keys()) > 2:
+                print(f"Sample: {str(questions_data[0])[:300]}...\n")
     except requests.exceptions.RequestException as e:
         print(f"Error fetching questions: {e}")
         return f"Error fetching questions: {e}", None
@@ -104,6 +111,29 @@ def run_and_submit_all(profile: gr.OAuthProfile | None = None, username: str | N
         if not task_id or question_text is None:
             print(f"Skipping item with missing task_id or question: {item}")
             continue
+        
+        # Check for attached files and download them
+        file_name = item.get("file_name", "")
+        if file_name and file_name.strip():
+            try:
+                from pathlib import Path
+                
+                # Construct file download URL
+                file_url = f"{api_url}/file/{task_id}"
+                print(f"📥 Downloading file: {file_name} from {file_url}")
+                
+                # Download the file
+                file_response = requests.get(file_url, timeout=30)
+                file_response.raise_for_status()
+                
+                # Save file to current directory
+                filepath = Path(file_name)
+                with open(filepath, 'wb') as f:
+                    f.write(file_response.content)
+                print(f"✅ Saved file: {file_name} ({len(file_response.content)} bytes)")
+            except Exception as e:
+                print(f"⚠️ Error downloading file {file_name}: {e}")
+        
         try:
             submitted_answer = agent(question_text)
             answers_payload.append({"task_id": task_id, "submitted_answer": submitted_answer})
